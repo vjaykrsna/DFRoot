@@ -381,6 +381,17 @@ static int patch_ko(void) {
     return ret;
 }
 
+/* crash_dump64 is patched with the helper and never restored, so a later crash
+ * may exec the helper instead of the real crash dumper. Drop the patched pages
+ * so the next exec reads the verified binary back off disk. */
+static void fadvise_drop(const char *path) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+    close(fd);
+    printf("cache dropped: %s\n", path);
+}
+
 static void cleanup(void) {
     if (!g_libcxx_r.valid) return;
     printf("\n=== cleanup ===\n");
@@ -588,6 +599,7 @@ static int exploit(void) {
     printf("timeout: ERROR - check logcat & dmesg\n");
 done:
     if (rc == 3) printf("patch: ERROR - failed to patch files\n");
+    fadvise_drop(kCrashDump);
     return rc;
 }
 
